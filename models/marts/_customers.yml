@@ -1,0 +1,319 @@
+version: 2
+
+models:
+  - name: customers
+    description: >
+      One row per customer. Includes order counts, revenue, lifecycle
+      dates, and repeat purchase flags. Contains all users, including
+      those who have never placed an order.
+    meta:
+      metrics:
+        repeat_purchaser_rate:
+          type: number
+          label: "Repeat Purchaser Rate"
+          description: >
+            Percentage of customers who have made more than one
+            successful purchase.
+          sql: "${repeat_purchasers} / nullif(${total_customers}, 0)"
+          format: "0.0%"
+          group: "Rates"
+        avg_revenue_per_customer:
+          type: number
+          label: "Revenue Per Customer"
+          description: "Average lifetime revenue in USD per customer."
+          sql: "${sum_revenue_usd} / nullif(${total_customers}, 0)"
+          format: "[$]#,##0.00"
+          group: "Revenue"
+        repeat_rate_90d:
+          type: number
+          label: "90-Day Repeat Rate"
+          description: >
+            Percentage of customers who made a second purchase within
+            90 days of their first.
+          sql: "${repeat_within_90d} / nullif(${total_customers}, 0)"
+          format: "0.0%"
+          group: "Rates"
+        repeat_rate_365d:
+          type: number
+          label: "365-Day Repeat Rate"
+          description: >
+            Percentage of customers who made a second purchase within
+            365 days of their first.
+          sql: "${repeat_within_365d} / nullif(${total_customers}, 0)"
+          format: "0.0%"
+          group: "Rates"
+    columns:
+      - name: user_id
+        description: Unique identifier for the customer.
+        meta:
+          dimension:
+            label: "Customer ID"
+            group: "Customer"
+          metrics:
+            total_customers:
+              type: count
+              label: "Total Customers"
+              description: "Total number of customers."
+              group: "Counts"
+        tests:
+          - unique
+          - not_null
+
+      - name: platform
+        description: The platform the customer signed up on.
+        meta:
+          dimension:
+            label: "Platform"
+            group: "Customer"
+
+      - name: acquisition_channel
+        description: The marketing channel that originally acquired the customer.
+        meta:
+          dimension:
+            label: "Acquisition Channel"
+            group: "Customer"
+
+      - name: ip_country
+        description: Customer's country at signup (ISO 3166-1 alpha-2 code).
+        meta:
+          dimension:
+            hidden: true
+
+      - name: ip_country_name
+        description: Customer's country at signup.
+        meta:
+          dimension:
+            label: "Country"
+            group: "Geography"
+
+      - name: signup_at
+        description: When the customer account was created.
+        meta:
+          dimension:
+            label: "Signup Date"
+            group: "Customer"
+
+      - name: total_orders
+        description: >
+          Total number of orders placed by this customer,
+          regardless of status.
+        meta:
+          dimension:
+            label: "Total Orders"
+            group: "Order Activity"
+          metrics:
+            sum_total_orders:
+              type: sum
+              label: "Total Orders (All Customers)"
+              description: "Sum of all orders across all customers."
+              group: "Counts"
+            avg_orders_per_customer:
+              type: average
+              label: "Avg Orders Per Customer"
+              description: "Average number of orders per customer."
+              format: "#,##0.0"
+              group: "Averages"
+
+      - name: completed_orders
+        description: Number of completed orders for this customer.
+        meta:
+          dimension:
+            label: "Completed Orders"
+            group: "Order Activity"
+
+      - name: refunded_orders
+        description: Number of refunded orders for this customer.
+        meta:
+          dimension:
+            label: "Refunded Orders"
+            group: "Order Activity"
+
+      - name: failed_orders
+        description: Number of failed orders for this customer.
+        meta:
+          dimension:
+            label: "Failed Orders"
+            group: "Order Activity"
+
+      - name: total_purchases
+        description: >
+          Number of successful orders (completed or refunded)
+          for this customer.
+        meta:
+          dimension:
+            label: "Total Purchases"
+            group: "Order Activity"
+          metrics:
+            avg_purchases_per_customer:
+              type: average
+              label: "Avg Purchases Per Customer"
+              description: >
+                Average number of successful purchases per customer.
+              format: "#,##0.0"
+              group: "Averages"
+
+      - name: total_revenue_usd
+        description: >
+          Total revenue in USD from this customer's completed orders.
+          Excludes refunded orders.
+        meta:
+          dimension:
+            label: "Lifetime Revenue (USD)"
+            format: "[$]#,##0.00"
+            group: "Revenue"
+          metrics:
+            sum_revenue_usd:
+              type: sum
+              label: "Total Revenue"
+              description: "Sum of revenue in USD across all customers."
+              format: "[$]#,##0.00"
+              group: "Revenue"
+
+      - name: total_refunded_usd
+        description: Total amount in USD that was refunded for this customer.
+        meta:
+          dimension:
+            label: "Lifetime Refunded (USD)"
+            format: "[$]#,##0.00"
+            group: "Revenue"
+
+      - name: first_order_at
+        description: When this customer placed their first order of any status.
+        meta:
+          dimension:
+            label: "First Order Date"
+            group: "Lifecycle"
+
+      - name: last_order_at
+        description: When this customer placed their most recent order of any status.
+        meta:
+          dimension:
+            label: "Last Order Date"
+            group: "Lifecycle"
+
+      - name: first_purchase_at
+        description: >
+          When this customer made their first successful purchase.
+          Null if the customer has no completed or refunded orders.
+        meta:
+          dimension:
+            label: "First Purchase Date"
+            group: "Lifecycle"
+
+      - name: last_purchase_at
+        description: >
+          When this customer made their most recent successful purchase.
+          Null if the customer has no completed or refunded orders.
+        meta:
+          dimension:
+            label: "Last Purchase Date"
+            group: "Lifecycle"
+
+      - name: customer_lifetime_days
+        description: >
+          Number of days between this customer's first and last order.
+          Null for customers with fewer than two orders.
+        meta:
+          dimension:
+            label: "Lifetime (Days)"
+            group: "Lifecycle"
+          metrics:
+            avg_customer_lifetime_days:
+              type: average
+              label: "Avg Customer Lifetime"
+              description: "Average customer lifetime in days."
+              format: "#,##0.0"
+              group: "Averages"
+
+      - name: days_since_last_order
+        description: >
+          Number of days since this customer's most recent order,
+          as of the last model refresh. Null for customers with no orders.
+        meta:
+          dimension:
+            label: "Days Since Last Order"
+            group: "Lifecycle"
+          metrics:
+            avg_days_since_last_order:
+              type: average
+              label: "Avg Days Since Last Order"
+              description: >
+                Average number of days since customers last placed
+                an order.
+              format: "#,##0.0"
+              group: "Averages"
+
+      - name: is_repeat_purchaser
+        description: >
+          Whether this customer has made more than one successful
+          purchase.
+        meta:
+          dimension:
+            label: "Repeat Purchaser"
+            group: "Customer"
+          metrics:
+            repeat_purchasers:
+              type: sum
+              label: "Repeat Purchasers"
+              description: "Number of customers who are repeat purchasers."
+              group: "Counts"
+
+      - name: acquisition_cohort_month
+        description: >
+          Month of the customer's first successful purchase, used for
+          cohort analysis. Null if the customer has no purchases.
+        meta:
+          dimension:
+            label: "Acquisition Cohort"
+            group: "Lifecycle"
+
+      - name: days_to_second_purchase
+        description: >
+          Number of days between the customer's first and second
+          successful purchase. Null if the customer has fewer than
+          two purchases.
+        meta:
+          dimension:
+            label: "Days to Second Purchase"
+            group: "Lifecycle"
+          metrics:
+            avg_days_to_second_purchase:
+              type: average
+              label: "Avg Days to Second Purchase"
+              description: >
+                Average number of days customers take to make their
+                second purchase.
+              format: "#,##0.0"
+              group: "Averages"
+
+      - name: has_repeat_within_90d
+        description: >
+          Whether the customer made a second purchase within 90 days
+          of their first.
+        meta:
+          dimension:
+            hidden: true
+          metrics:
+            repeat_within_90d:
+              type: sum
+              label: "Repeat Within 90 Days"
+              description: >
+                Number of customers who made a second purchase within
+                90 days.
+              group: "Counts"
+
+      - name: has_repeat_within_365d
+        description: >
+          Whether the customer made a second purchase within 365 days
+          of their first.
+        meta:
+          dimension:
+            hidden: true
+          metrics:
+            repeat_within_365d:
+              type: sum
+              label: "Repeat Within 365 Days"
+              description: >
+                Number of customers who made a second purchase within
+                365 days.
+              group: "Counts"

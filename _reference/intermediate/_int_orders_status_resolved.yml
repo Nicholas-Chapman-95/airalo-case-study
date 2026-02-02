@@ -1,0 +1,60 @@
+version: 2
+
+models:
+  - name: int_orders_status_resolved
+    description: >
+      One row per order reflecting its most recent status.
+      Takes the row with the latest updated_at per order_id
+      from stg_raw__orders. Use this instead of stg_raw__orders
+      for any analysis that needs a single row per order.
+    columns:
+      - name: order_id
+        description: Unique order identifier (UUID, cast to string).
+        tests:
+          - unique
+          - not_null
+      - name: user_id
+        description: Foreign key to stg_raw__users.
+        tests:
+          - not_null
+      - name: currency
+        description: ISO 4217 currency code of the transaction (e.g. USD, EUR).
+      - name: card_country
+        description: >
+          ISO 3166-1 alpha-2 country code of the payment card.
+          Null when payment method has no card (e.g. Airmoney).
+      - name: destination_country
+        description: ISO 3166-1 alpha-2 country code where the eSIM is used.
+      - name: payment_method
+        description: >
+          Normalized payment method in snake_case
+          (e.g. credit_card, apple_pay, google_pay, paypal, airmoney).
+      - name: status
+        description: >
+          Latest order status: completed, refunded, or failed.
+      - name: esim_package
+        description: >
+          Original eSIM package label from source
+          (e.g. '1GB - 7 Days', 'Unlimited').
+      - name: package_data_gb
+        description: >
+          Data allowance in GB, parsed from esim_package.
+          Null for unlimited plans.
+      - name: package_validity_days
+        description: >
+          Plan validity in days, parsed from esim_package.
+          Null for unlimited plans.
+      - name: is_unlimited_package
+        description: True if the eSIM package is an unlimited data plan.
+      - name: is_completed
+        description: True if the latest order status is 'completed'.
+      - name: is_refunded
+        description: True if the latest order status is 'refunded'.
+      - name: is_failed
+        description: True if the latest order status is 'failed'.
+      - name: amount
+        description: Transaction amount in local currency (numeric, not cents).
+      - name: created_at
+        description: Timestamp when the order was originally created.
+      - name: updated_at
+        description: Timestamp of the most recent status change.

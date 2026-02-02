@@ -1,0 +1,540 @@
+version: 2
+
+models:
+  - name: orders
+    description: >
+      Analytics-ready orders fact table. One row per order with all
+      statuses included (completed, refunded, failed). Combines order
+      data with customer sequencing, user dimensions, and USD-converted
+      revenue. Contains two metric namespaces: attempt-level (all orders)
+      and purchase-level (completed + refunded only).
+    config:
+      meta:
+        metrics:
+          completion_rate:
+            type: number
+            label: "Completion Rate"
+            description: >
+              Completed orders as a proportion of total orders.
+            sql: "${completed_orders} / nullif(${total_orders}, 0)"
+            format: '0.0%'
+            groups:
+              - "Rates"
+          refund_rate:
+            type: number
+            label: "Refund Rate"
+            description: >
+              Refunded orders as a proportion of total orders.
+            sql: "${refunded_orders} / nullif(${total_orders}, 0)"
+            format: '0.0%'
+            groups:
+              - "Rates"
+          failure_rate:
+            type: number
+            label: "Failure Rate"
+            description: >
+              Failed orders as a proportion of total orders.
+            sql: "${failed_orders} / nullif(${total_orders}, 0)"
+            format: '0.0%'
+            groups:
+              - "Rates"
+          revenue_per_customer:
+            type: number
+            label: "Revenue per Customer (USD)"
+            description: >
+              Total completed revenue divided by unique customers.
+            sql: >
+              ${total_revenue_usd}
+              / nullif(${unique_customers}, 0)
+            format: '[$]#,##0.00'
+            groups:
+              - "Revenue"
+          new_customer_rate:
+            type: number
+            label: "New Customer Rate"
+            description: >
+              First-time purchasers as a proportion of unique
+              customers.
+            sql: >
+              ${first_purchases}
+              / nullif(${unique_customers}, 0)
+            format: '0.0%'
+            groups:
+              - "Rates"
+    columns:
+      - name: order_id
+        description: Unique order identifier (UUID, cast to string).
+        tests:
+          - unique
+          - not_null
+        config:
+          meta:
+            dimension:
+              groups:
+                - "IDs"
+            metrics:
+              total_orders:
+                type: count
+                label: "Total Orders"
+                description: >
+                  Count of all orders regardless of status.
+                groups:
+                  - "Orders"
+
+      - name: user_id
+        description: Foreign key to the user who placed the order.
+        tests:
+          - not_null
+          - relationships:
+              to: ref('stg_raw__users')
+              field: user_id
+              config:
+                severity: warn
+        config:
+          meta:
+            dimension:
+              groups:
+                - "IDs"
+            metrics:
+              unique_customers:
+                type: count_distinct
+                label: "Unique Customers"
+                description: >
+                  Distinct customers who placed orders.
+                groups:
+                  - "Customers"
+
+      - name: currency
+        description: >
+          ISO 4217 currency code of the transaction (e.g. USD, EUR).
+        config:
+          meta:
+            dimension:
+              hidden: true
+
+      - name: card_country
+        description: >
+          ISO 3166-1 alpha-2 country code of the payment card.
+          Null when payment method has no card (e.g. Airmoney).
+        config:
+          meta:
+            dimension:
+              label: "Card Country Code"
+              groups:
+                - "Geography"
+
+      - name: card_country_name
+        description: >
+          Full country name of the payment card, resolved from
+          seed_countries. Null when payment method has no card.
+        config:
+          meta:
+            dimension:
+              label: "Card Country"
+              groups:
+                - "Geography"
+
+      - name: destination_country
+        description: >
+          ISO 3166-1 alpha-2 country code where the eSIM is used.
+        config:
+          meta:
+            dimension:
+              label: "Destination Country Code"
+              groups:
+                - "Geography"
+
+      - name: destination_country_name
+        description: >
+          Full country name where the eSIM is used, resolved from
+          seed_countries.
+        config:
+          meta:
+            dimension:
+              label: "Destination Country"
+              groups:
+                - "Geography"
+
+      - name: payment_method
+        description: >
+          Normalized payment method in snake_case
+          (e.g. credit_card, apple_pay, google_pay, paypal, airmoney).
+        config:
+          meta:
+            dimension:
+              groups:
+                - "Order"
+
+      - name: status
+        description: >
+          Latest order status: completed, refunded, or failed.
+        tests:
+          - accepted_values:
+              values: ['completed', 'refunded', 'failed']
+        config:
+          meta:
+            dimension:
+              groups:
+                - "Order"
+
+      - name: esim_package
+        description: >
+          Original eSIM package label from source
+          (e.g. '1GB - 7 Days', 'Unlimited').
+        config:
+          meta:
+            dimension:
+              groups:
+                - "Package"
+
+      - name: package_data_gb
+        description: >
+          Data allowance in gigabytes, parsed from esim_package.
+          Null for unlimited plans.
+        config:
+          meta:
+            dimension:
+              label: "Package Data (Gigabytes)"
+              groups:
+                - "Package"
+            metrics:
+              average_package_data_gb:
+                type: average
+                label: "Avg Package Size (Gigabytes)"
+                description: >
+                  Mean data allowance in gigabytes across orders.
+                format: '#,##0.0'
+                groups:
+                  - "Package"
+
+      - name: package_validity_days
+        description: >
+          Plan validity in days, parsed from esim_package.
+          Null for unlimited plans.
+        config:
+          meta:
+            dimension:
+              label: "Package Validity (Days)"
+              groups:
+                - "Package"
+            metrics:
+              average_package_validity_days:
+                type: average
+                label: "Avg Package Validity (Days)"
+                description: >
+                  Mean plan validity in days across orders.
+                format: '#,##0.0'
+                groups:
+                  - "Package"
+
+      - name: is_unlimited_package
+        description: True if the eSIM package is an unlimited data plan.
+        config:
+          meta:
+            dimension:
+              groups:
+                - "Package"
+
+      - name: is_completed
+        description: True if the latest order status is 'completed'.
+        config:
+          meta:
+            dimension:
+              hidden: true
+            metrics:
+              completed_orders:
+                type: sum
+                label: "Completed Orders"
+                description: >
+                  Count of orders with status completed.
+                groups:
+                  - "Orders"
+
+      - name: is_refunded
+        description: True if the latest order status is 'refunded'.
+        config:
+          meta:
+            dimension:
+              hidden: true
+            metrics:
+              refunded_orders:
+                type: sum
+                label: "Refunded Orders"
+                description: >
+                  Count of orders with status refunded.
+                groups:
+                  - "Orders"
+
+      - name: is_failed
+        description: True if the latest order status is 'failed'.
+        config:
+          meta:
+            dimension:
+              hidden: true
+            metrics:
+              failed_orders:
+                type: sum
+                label: "Failed Orders"
+                description: >
+                  Count of orders with status failed.
+                groups:
+                  - "Orders"
+
+      - name: amount
+        description: >
+          Transaction amount in original currency (numeric, not cents).
+        config:
+          meta:
+            dimension:
+              hidden: true
+
+      - name: amount_usd
+        description: >
+          Transaction amount converted to USD using the current
+          exchange rate from snp_raw__exchange_rates. Uses the
+          non-temporal macro mode (dbt_valid_to is null) because
+          the snapshot was initialized after the historical order
+          data was loaded. Once the snapshot has accumulated rate
+          history covering the order date range, this can be
+          switched to point-in-time conversion by passing
+          created_at as the timestamp parameter.
+        tests:
+          - not_null
+        config:
+          meta:
+            dimension:
+              label: "Amount (USD)"
+              format: '[$]#,##0.00'
+              groups:
+                - "Revenue"
+            metrics:
+              total_revenue_usd:
+                type: sum
+                label: "Total Revenue (USD)"
+                description: >
+                  Sum of completed order amounts in USD.
+                format: '[$]#,##0.00'
+                filters:
+                  - is_completed: true
+                groups:
+                  - "Revenue"
+                show_underlying_values:
+                  - order_id
+                  - amount_usd
+                  - status
+                  - destination_country_name
+                  - created_at
+              gross_revenue_usd:
+                type: sum
+                label: "Gross Revenue (USD)"
+                description: >
+                  Sum of all non-failed order amounts in USD
+                  (completed + refunded).
+                format: '[$]#,##0.00'
+                filters:
+                  - is_failed: false
+                groups:
+                  - "Revenue"
+              average_order_value_usd:
+                type: average
+                label: "Avg Order Value (USD)"
+                description: >
+                  Mean order amount in USD for completed orders.
+                format: '[$]#,##0.00'
+                filters:
+                  - is_completed: true
+                groups:
+                  - "Revenue"
+              median_order_value_usd:
+                type: median
+                label: "Median Order Value (USD)"
+                format: '[$]#,##0.00'
+                filters:
+                  - is_completed: true
+                groups:
+                  - "Revenue"
+              max_order_value_usd:
+                type: max
+                label: "Max Order Value (USD)"
+                format: '[$]#,##0.00'
+                groups:
+                  - "Revenue"
+              min_order_value_usd:
+                type: min
+                label: "Min Order Value (USD)"
+                format: '[$]#,##0.00'
+                groups:
+                  - "Revenue"
+
+      - name: customer_attempt_number
+        description: >
+          Sequence number of this order among all orders for the
+          customer, regardless of status. Ordered by created_at.
+        tests:
+          - not_null
+        config:
+          meta:
+            dimension:
+              groups:
+                - "Customer Sequencing"
+
+      - name: is_first_attempt
+        description: >
+          True if this is the customer's first order attempt
+          (customer_attempt_number = 1).
+        config:
+          meta:
+            dimension:
+              groups:
+                - "Customer Sequencing"
+            metrics:
+              first_attempts:
+                type: sum
+                label: "First Attempts"
+                description: >
+                  Count of orders that were the customer's first
+                  attempt.
+                groups:
+                  - "Customers"
+
+      - name: customer_purchase_number
+        description: >
+          Sequence number of this order among completed and refunded
+          orders for the customer. Null for failed orders.
+        config:
+          meta:
+            dimension:
+              groups:
+                - "Customer Sequencing"
+
+      - name: is_first_purchase
+        description: >
+          True if this is the customer's first successful purchase
+          (customer_purchase_number = 1). Null for failed orders.
+        config:
+          meta:
+            dimension:
+              groups:
+                - "Customer Sequencing"
+            metrics:
+              first_purchases:
+                type: sum
+                label: "First Purchases"
+                description: >
+                  Count of orders that were the customer's first
+                  successful purchase.
+                groups:
+                  - "Customers"
+
+      - name: previous_purchase_at
+        description: >
+          Timestamp of the customer's previous successful purchase.
+          Null for first purchases and failed orders.
+        config:
+          meta:
+            dimension:
+              hidden: true
+
+      - name: days_since_previous_purchase
+        description: >
+          Days between this order and the customer's previous
+          successful purchase. Null for first purchases and
+          failed orders.
+        config:
+          meta:
+            dimension:
+              groups:
+                - "Customer Sequencing"
+            metrics:
+              avg_days_between_purchases:
+                type: average
+                label: "Avg Days Between Purchases"
+                description: >
+                  Mean repurchase interval for repeat customers.
+                format: '#,##0.0'
+                groups:
+                  - "Customers"
+
+      - name: customer_first_purchase_at
+        description: >
+          Timestamp of the customer's first successful purchase.
+          Null for failed orders.
+        config:
+          meta:
+            dimension:
+              hidden: true
+
+      - name: days_since_first_purchase
+        description: >
+          Days between this order and the customer's first successful
+          purchase. Zero for first purchases. Null for failed orders.
+        config:
+          meta:
+            dimension:
+              groups:
+                - "Customer Sequencing"
+
+      - name: user_platform
+        description: Platform the user signed up on.
+        config:
+          meta:
+            dimension:
+              groups:
+                - "User"
+
+      - name: user_acquisition_channel
+        description: >
+          Marketing channel that acquired the user (snake_case).
+        config:
+          meta:
+            dimension:
+              groups:
+                - "User"
+
+      - name: user_ip_country
+        description: >
+          Country inferred from user's IP at signup
+          (ISO 3166-1 alpha-2, uppercase).
+        config:
+          meta:
+            dimension:
+              label: "User Country Code"
+              groups:
+                - "User"
+
+      - name: user_ip_country_name
+        description: >
+          Full country name inferred from user's IP at signup,
+          resolved from seed_countries.
+        config:
+          meta:
+            dimension:
+              label: "User Country"
+              groups:
+                - "User"
+
+      - name: user_created_at
+        description: Timestamp when the user account was created.
+        config:
+          meta:
+            dimension:
+              label: "User Signup Date"
+              groups:
+                - "Dates"
+
+      - name: created_at
+        description: Timestamp when the order was originally created.
+        config:
+          meta:
+            dimension:
+              label: "Order Date"
+              groups:
+                - "Dates"
+
+      - name: updated_at
+        description: Timestamp of the most recent status change.
+        config:
+          meta:
+            dimension:
+              groups:
+                - "Dates"

@@ -1,0 +1,408 @@
+version: 2
+
+models:
+  - name: orders
+    description: >
+      One row per order. Combines order dimensions, customer purchase
+      sequencing, user attributes, and USD-converted revenue. Includes
+      all order statuses (completed, refunded, failed).
+    meta:
+      metrics:
+        completion_rate:
+          type: number
+          label: "Completion Rate"
+          description: "Percentage of orders that were completed."
+          sql: "${completed_orders} / nullif(${total_orders}, 0)"
+          format: "0.0%"
+          group: "Rates"
+        refund_rate:
+          type: number
+          label: "Refund Rate"
+          description: "Percentage of orders that were refunded."
+          sql: "${refunded_orders} / nullif(${total_orders}, 0)"
+          format: "0.0%"
+          group: "Rates"
+        failure_rate:
+          type: number
+          label: "Failure Rate"
+          description: "Percentage of orders that failed."
+          sql: "${failed_orders} / nullif(${total_orders}, 0)"
+          format: "0.0%"
+          group: "Rates"
+        revenue_per_customer:
+          type: number
+          label: "Revenue Per Customer"
+          description: "Average revenue in USD per unique customer."
+          sql: "${total_revenue_usd} / nullif(${unique_customers}, 0)"
+          format: "[$]#,##0.00"
+          group: "Revenue"
+    columns:
+      - name: order_id
+        description: Unique identifier for each order.
+        meta:
+          dimension:
+            label: "Order ID"
+            group: "Order Details"
+          metrics:
+            total_orders:
+              type: count_distinct
+              label: "Total Orders"
+              description: "Total number of unique orders across all statuses."
+              group: "Counts"
+              show_underlying_values:
+                - order_id
+                - order_status
+                - order_amount_usd
+                - order_created_at
+                - order_destination_country_name
+        tests:
+          - unique
+          - not_null
+
+      - name: order_status
+        description: >
+          Current status of the order: completed, refunded, or failed.
+        meta:
+          dimension:
+            label: "Order Status"
+            group: "Order Details"
+        tests:
+          - accepted_values:
+              values: ['completed', 'refunded', 'failed']
+
+      - name: order_currency
+        description: Currency the order was placed in (ISO 4217 code).
+        meta:
+          dimension:
+            hidden: true
+
+      - name: order_card_country
+        description: >
+          Country of the payment card (ISO 3166-1 alpha-2 code).
+          Null for non-card payment methods like Airmoney.
+        meta:
+          dimension:
+            hidden: true
+
+      - name: order_card_country_name
+        description: >
+          Country of the payment card.
+          Null for non-card payment methods like Airmoney.
+        meta:
+          dimension:
+            label: "Card Country"
+            group: "Geography"
+
+      - name: order_destination_country
+        description: Country where the eSIM will be used (ISO 3166-1 alpha-2 code).
+        meta:
+          dimension:
+            hidden: true
+
+      - name: order_destination_country_name
+        description: Country where the eSIM will be used.
+        meta:
+          dimension:
+            label: "Destination Country"
+            group: "Geography"
+
+      - name: order_payment_method
+        description: >
+          How the customer paid for the order
+          (credit card, Apple Pay, Google Pay, PayPal, or Airmoney).
+        meta:
+          dimension:
+            label: "Payment Method"
+            group: "Order Details"
+
+      - name: order_esim_package
+        description: >
+          The eSIM package purchased (e.g. "1GB - 7 Days", "Unlimited").
+        meta:
+          dimension:
+            label: "eSIM Package"
+            group: "Package"
+
+      - name: order_package_data_gigabytes
+        description: >
+          Data allowance in gigabytes. Null for unlimited plans.
+        meta:
+          dimension:
+            label: "Data Allowance (Gigabytes)"
+            group: "Package"
+          metrics:
+            avg_package_data_gigabytes:
+              type: average
+              label: "Avg Data Allowance"
+              description: "Average data allowance in gigabytes across orders."
+              format: "#,##0.0"
+              group: "Averages"
+
+      - name: order_package_validity_days
+        description: >
+          Number of days the eSIM plan is valid. Null for unlimited plans.
+        meta:
+          dimension:
+            label: "Validity (Days)"
+            group: "Package"
+          metrics:
+            avg_package_validity_days:
+              type: average
+              label: "Avg Validity Days"
+              description: "Average plan validity in days across orders."
+              format: "#,##0.0"
+              group: "Averages"
+
+      - name: order_is_unlimited_package
+        description: Whether the eSIM package has unlimited data.
+        meta:
+          dimension:
+            label: "Unlimited Package"
+            group: "Package"
+
+      - name: order_is_completed
+        description: Whether the order status is completed.
+        meta:
+          dimension:
+            hidden: true
+          metrics:
+            completed_orders:
+              type: sum
+              label: "Completed Orders"
+              description: "Number of orders with a completed status."
+              group: "Counts"
+
+      - name: order_is_refunded
+        description: Whether the order status is refunded.
+        meta:
+          dimension:
+            hidden: true
+          metrics:
+            refunded_orders:
+              type: sum
+              label: "Refunded Orders"
+              description: "Number of orders that were refunded."
+              group: "Counts"
+
+      - name: order_is_failed
+        description: Whether the order status is failed.
+        meta:
+          dimension:
+            hidden: true
+          metrics:
+            failed_orders:
+              type: sum
+              label: "Failed Orders"
+              description: "Number of orders that failed."
+              group: "Counts"
+
+      - name: order_created_at
+        description: When the order was placed.
+        meta:
+          dimension:
+            label: "Order Date"
+            group: "Dates"
+
+      - name: order_updated_at
+        description: When the order status last changed.
+        meta:
+          dimension:
+            label: "Last Status Change"
+            group: "Dates"
+
+      - name: customer_attempt_number
+        description: >
+          Which order attempt this is for the customer, counting all
+          orders regardless of status (1st, 2nd, 3rd, etc.).
+        meta:
+          dimension:
+            label: "Attempt Number"
+            group: "Purchase Sequence"
+
+      - name: is_first_attempt
+        description: Whether this is the customer's first ever order attempt.
+        meta:
+          dimension:
+            label: "First Attempt"
+            group: "Purchase Sequence"
+
+      - name: customer_purchase_number
+        description: >
+          Which successful purchase this is for the customer (1st, 2nd,
+          3rd, etc.). Only counts completed and refunded orders.
+          Null for failed orders.
+        meta:
+          dimension:
+            label: "Purchase Number"
+            group: "Purchase Sequence"
+
+      - name: is_first_purchase
+        description: >
+          Whether this is the customer's first successful purchase.
+          Null for failed orders.
+        meta:
+          dimension:
+            label: "First Purchase"
+            group: "Purchase Sequence"
+
+      - name: previous_purchase_at
+        description: When the customer's previous successful purchase was placed.
+        meta:
+          dimension:
+            hidden: true
+
+      - name: days_since_previous_purchase
+        description: >
+          Number of days between this purchase and the customer's
+          previous purchase. Null for first purchases and failed orders.
+        meta:
+          dimension:
+            label: "Days Since Previous Purchase"
+            group: "Purchase Sequence"
+          metrics:
+            avg_days_between_purchases:
+              type: average
+              label: "Avg Days Between Purchases"
+              description: >
+                Average number of days customers wait between
+                consecutive purchases.
+              format: "#,##0.0"
+              group: "Averages"
+
+      - name: customer_first_purchase_at
+        description: When the customer made their first successful purchase.
+        meta:
+          dimension:
+            hidden: true
+
+      - name: days_since_first_purchase
+        description: >
+          Number of days between this purchase and the customer's
+          very first purchase. Null for failed orders.
+        meta:
+          dimension:
+            label: "Days Since First Purchase"
+            group: "Purchase Sequence"
+
+      - name: customer_prior_completions
+        description: >
+          Number of completed orders this customer had before this order
+          was placed. Zero for the customer's first order.
+        meta:
+          dimension:
+            label: "Prior Completions"
+            group: "Purchase Sequence"
+
+      - name: customer_prior_refunds
+        description: >
+          Number of refunded orders this customer had before this order
+          was placed. Zero for the customer's first order.
+        meta:
+          dimension:
+            label: "Prior Refunds"
+            group: "Purchase Sequence"
+
+      - name: customer_prior_failures
+        description: >
+          Number of failed orders this customer had before this order
+          was placed. Zero for the customer's first order.
+        meta:
+          dimension:
+            label: "Prior Failures"
+            group: "Purchase Sequence"
+
+      - name: user_id
+        description: Unique identifier for the customer who placed the order.
+        meta:
+          dimension:
+            label: "Customer ID"
+            group: "Customer"
+          metrics:
+            unique_customers:
+              type: count_distinct
+              label: "Unique Customers"
+              description: "Number of distinct customers."
+              group: "Counts"
+              show_underlying_values:
+                - user_id
+                - user_platform
+                - user_acquisition_channel
+                - user_ip_country_name
+        tests:
+          - not_null
+          - relationships:
+              to: ref('stg_raw__users')
+              field: user_id
+              config:
+                severity: warn
+
+      - name: user_platform
+        description: The platform the customer signed up on.
+        meta:
+          dimension:
+            label: "Platform"
+            group: "Customer"
+
+      - name: user_acquisition_channel
+        description: The marketing channel that originally acquired the customer.
+        meta:
+          dimension:
+            label: "Acquisition Channel"
+            group: "Customer"
+
+      - name: user_ip_country
+        description: Customer's country at signup (ISO 3166-1 alpha-2 code).
+        meta:
+          dimension:
+            hidden: true
+
+      - name: user_ip_country_name
+        description: Customer's country at signup.
+        meta:
+          dimension:
+            label: "Customer Country"
+            group: "Geography"
+
+      - name: user_signup_at
+        description: When the customer account was created.
+        meta:
+          dimension:
+            label: "Signup Date"
+            group: "Customer"
+
+      - name: order_amount_local
+        description: Order amount in the original transaction currency.
+        meta:
+          dimension:
+            hidden: true
+
+      - name: order_amount_usd
+        description: Order amount converted to US dollars.
+        meta:
+          dimension:
+            label: "Amount (USD)"
+            format: "[$]#,##0.00"
+            group: "Financials"
+          metrics:
+            total_revenue_usd:
+              type: sum
+              label: "Total Revenue"
+              description: "Total revenue in USD from completed orders."
+              format: "[$]#,##0.00"
+              group: "Revenue"
+              filters:
+                - order_is_completed: true
+              show_underlying_values:
+                - order_id
+                - order_amount_usd
+                - order_status
+                - order_created_at
+                - order_destination_country_name
+            average_order_value_usd:
+              type: average
+              label: "Average Order Value"
+              description: "Average order amount in USD across completed orders."
+              format: "[$]#,##0.00"
+              group: "Revenue"
+              filters:
+                - order_is_completed: true

@@ -1,0 +1,54 @@
+version: 2
+
+sources:
+  - name: raw
+    database: airalo-486008
+    schema: raw
+    config:
+      loaded_at_field: created_at
+      freshness:
+        warn_after:
+          count: 36
+          period: hour
+        error_after:
+          count: 72
+          period: hour
+
+    tables:
+      - name: exchange_rates
+        config:
+          loaded_at_field: null
+        columns:
+          - name: currency
+            tests:
+              - unique
+              - not_null
+          - name: usd_rate
+            tests:
+              - not_null
+
+      - name: orders
+        description: >
+          Contains multiple rows per order_id due to status
+          changes over time (e.g. completed -> refunded).
+          Deduplication is handled in int_orders__latest_status
+          using the most recent updated_at per order_id.
+        columns:
+          - name: order_id
+            tests:
+              - not_null
+          - name: user_id
+            tests:
+              - not_null
+          - name: created_at
+          - name: status
+
+      - name: users
+        columns:
+          - name: user_id
+            tests:
+              - unique
+              - not_null
+          - name: created_at
+            tests:
+              - not_null

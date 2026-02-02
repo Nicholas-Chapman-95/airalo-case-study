@@ -1,0 +1,40 @@
+name: 'airalo'
+version: '1.0.0'
+
+profile: 'airalo'
+
+model-paths: ["models"]
+analysis-paths: ["analyses"]
+test-paths: ["tests"]
+seed-paths: ["seeds"]
+macro-paths: ["macros"]
+snapshot-paths: ["snapshots"]
+
+clean-targets:
+  - "target"
+  - "dbt_packages"
+
+vars:
+  # airflow-sourced: overridden at runtime via --vars
+  data_interval_start: "2024-01-01"
+  data_interval_end: "2024-01-01"
+  processing_timestamp: "current_timestamp()"
+
+seeds:
+  airalo:
+    +schema: raw
+
+models:
+  airalo:
+    +persist_docs:
+      relation: true
+      columns: true
+    staging:
+      +materialized: view
+      +schema: staging
+    intermediate:
+      +materialized: view
+      +schema: intermediate
+    marts:
+      +materialized: table
+      +schema: marts
