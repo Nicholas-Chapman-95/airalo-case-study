@@ -3,6 +3,8 @@
 dbt project for Airalo eSIM order and customer analytics, targeting BigQuery.
 
 > **Written response:** [RESPONSE.md](RESPONSE.md) — covers approach, assumptions, data quality issues, and the cleaning vs business logic boundary.
+>
+> **Example analysis:** [`reports/customer_purchase_behavior.ipynb`](reports/customer_purchase_behavior.ipynb) — example queries answering business questions (marketing spend focus, repeat purchase rates, repurchase timing) using the mart columns and metrics.
 
 ## Overview
 
@@ -54,14 +56,6 @@ flowchart LR
 - **Exchange rate snapshot** — `snp_raw__exchange_rates` tracks rate changes via `check` strategy so historical orders can be converted at the rate that was current when they were placed.
 - **Purchase sequencing** — `int_orders_numbered_per_customer` assigns each customer a `customer_purchase_number` and computes `days_since_previous_purchase`, enabling repeat-purchase analysis without post-hoc queries.
 - **BI-layer metrics** — `_customers.yml` and `_orders.yml` define Lightdash-compatible metrics (`repeat_purchaser_rate`, `new_customer_rate`, `avg_days_to_second_purchase`, etc.) so dashboards derive from governed definitions.
-
-## Example analysis
-
-[`reports/customer_purchase_behavior.ipynb`](reports/customer_purchase_behavior.ipynb) demonstrates how the marts can be queried to answer business questions using the columns and metrics defined in `_customers.yml` and `_orders.yml`:
-
-1. **Where to focus marketing spend** — new vs returning customer revenue split, repeat rates by acquisition channel
-2. **How often customers return** — purchase frequency distribution, repeat purchaser rate
-3. **How long until they come back** — time-to-second-purchase distribution, inter-purchase gap trends
 
 ## Prerequisites
 
