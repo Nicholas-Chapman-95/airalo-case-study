@@ -1,0 +1,93 @@
+version: 2
+
+unit_tests:
+
+  # -----------------------------------------------------------
+  # 2a. int_orders_latest_status — dedup keeps latest row only
+  # -----------------------------------------------------------
+  - name: unit_test_latest_status_dedup
+    description: >
+      Given orders with multiple status rows, only the row with
+      the most recent updated_at is kept per order_id.
+    model: int_orders_latest_status
+    overrides:
+      macros:
+        is_incremental: false
+    given:
+      - input: ref('stg_raw__orders')
+        rows:
+          # order 1: completed then refunded → expect refunded
+          - {order_id: "1", user_id: "100", currency: "USD", card_country: "US", destination_country: "US", payment_method: "credit_card", status: "completed", esim_package: "1GB - 7 Days", package_data_gigabytes: 1, package_validity_days: 7, is_unlimited_package: false, is_completed: true, is_refunded: false, is_failed: false, amount: 10, created_at: "2025-01-01 00:00:00", updated_at: "2025-01-01 00:00:00"}
+          - {order_id: "1", user_id: "100", currency: "USD", card_country: "US", destination_country: "US", payment_method: "credit_card", status: "refunded", esim_package: "1GB - 7 Days", package_data_gigabytes: 1, package_validity_days: 7, is_unlimited_package: false, is_completed: false, is_refunded: true, is_failed: false, amount: 10, created_at: "2025-01-01 00:00:00", updated_at: "2025-01-02 00:00:00"}
+          # order 2: single row completed → expect completed
+          - {order_id: "2", user_id: "101", currency: "EUR", card_country: "DE", destination_country: "FR", payment_method: "apple_pay", status: "completed", esim_package: "3GB - 30 Days", package_data_gigabytes: 3, package_validity_days: 30, is_unlimited_package: false, is_completed: true, is_refunded: false, is_failed: false, amount: 20, created_at: "2025-01-01 00:00:00", updated_at: "2025-01-01 00:00:00"}
+          # order 3: three rows → expect failed (latest)
+          - {order_id: "3", user_id: "102", currency: "GBP", card_country: "GB", destination_country: "GB", payment_method: "google_pay", status: "completed", esim_package: "5GB - 30 Days", package_data_gigabytes: 5, package_validity_days: 30, is_unlimited_package: false, is_completed: true, is_refunded: false, is_failed: false, amount: 30, created_at: "2025-01-01 00:00:00", updated_at: "2025-01-01 00:00:00"}
+          - {order_id: "3", user_id: "102", currency: "GBP", card_country: "GB", destination_country: "GB", payment_method: "google_pay", status: "completed", esim_package: "5GB - 30 Days", package_data_gigabytes: 5, package_validity_days: 30, is_unlimited_package: false, is_completed: true, is_refunded: false, is_failed: false, amount: 30, created_at: "2025-01-01 00:00:00", updated_at: "2025-01-02 00:00:00"}
+          - {order_id: "3", user_id: "102", currency: "GBP", card_country: "GB", destination_country: "GB", payment_method: "google_pay", status: "failed", esim_package: "5GB - 30 Days", package_data_gigabytes: 5, package_validity_days: 30, is_unlimited_package: false, is_completed: false, is_refunded: false, is_failed: true, amount: 30, created_at: "2025-01-01 00:00:00", updated_at: "2025-01-03 00:00:00"}
+    expect:
+      rows:
+        - {order_id: "1", user_id: "100", status: "refunded", updated_at: "2025-01-02 00:00:00"}
+        - {order_id: "2", user_id: "101", status: "completed", updated_at: "2025-01-01 00:00:00"}
+        - {order_id: "3", user_id: "102", status: "failed", updated_at: "2025-01-03 00:00:00"}
+
+  # -----------------------------------------------------------
+  # 2b. int_orders_enriched — USD conversion via exchange rates
+  # -----------------------------------------------------------
+  - name: unit_test_enriched_usd_conversion
+    description: >
+      USD conversion produces correct amounts: EUR 100 at rate 0.92
+      yields ~108.70, USD 50 at rate 1.0 yields 50.
+    model: int_orders_enriched
+    overrides:
+      macros:
+        is_incremental: false
+    given:
+      - input: ref('int_orders_latest_status')
+        rows:
+          - {order_id: "1", user_id: "100", currency: "EUR", card_country: "DE", destination_country: "FR", payment_method: "credit_card", status: "completed", esim_package: "1GB - 7 Days", package_data_gigabytes: 1, package_validity_days: 7, is_unlimited_package: false, is_completed: true, is_refunded: false, is_failed: false, amount: 100, created_at: "2025-01-01 00:00:00", updated_at: "2025-01-01 00:00:00"}
+          - {order_id: "2", user_id: "101", currency: "USD", card_country: "US", destination_country: "US", payment_method: "apple_pay", status: "completed", esim_package: "3GB - 30 Days", package_data_gigabytes: 3, package_validity_days: 30, is_unlimited_package: false, is_completed: true, is_refunded: false, is_failed: false, amount: 50, created_at: "2025-01-02 00:00:00", updated_at: "2025-01-02 00:00:00"}
+      - input: ref('stg_raw__exchange_rates')
+        rows:
+          - {currency: "EUR", usd_rate: 0.92}
+          - {currency: "USD", usd_rate: 1.0}
+      - input: ref('stg_raw__users')
+        rows:
+          - {user_id: "100", platform: "ios", acquisition_channel: "organic", ip_country: "DE", created_at: "2024-12-01 00:00:00"}
+          - {user_id: "101", platform: "android", acquisition_channel: "referral_link", ip_country: "US", created_at: "2024-12-15 00:00:00"}
+      - input: ref('seed_countries')
+        rows:
+          - {country_code: "DE", country_name: "Germany"}
+          - {country_code: "FR", country_name: "France"}
+          - {country_code: "US", country_name: "United States"}
+    expect:
+      rows:
+        - {order_id: "1", order_currency: "EUR", order_amount_local: 100, order_amount_usd: 108.695652174}
+        - {order_id: "2", order_currency: "USD", order_amount_local: 50, order_amount_usd: 50.0}
+
+  # -----------------------------------------------------------
+  # 2c. int_orders_numbered_per_customer — purchase sequencing
+  # -----------------------------------------------------------
+  - name: unit_test_purchase_sequencing
+    description: >
+      Window functions correctly number attempts vs purchases.
+      Failed orders get null purchase numbers. Attempt numbering
+      includes all statuses.
+    model: int_orders_numbered_per_customer
+    overrides:
+      macros:
+        is_incremental: false
+    given:
+      - input: ref('int_orders_enriched')
+        rows:
+          # customer 200: 4 orders — completed, failed, completed, refunded
+          - {order_id: "10", user_id: "200", order_currency: "USD", order_card_country: "US", order_card_country_name: "United States", order_destination_country: "US", order_destination_country_name: "United States", order_payment_method: "credit_card", order_status: "completed", order_esim_package: "1GB - 7 Days", order_package_data_gigabytes: 1, order_package_validity_days: 7, order_is_unlimited_package: false, order_is_completed: true, order_is_refunded: false, order_is_failed: false, order_created_at: "2025-01-01 00:00:00", order_updated_at: "2025-01-01 00:00:00", user_signup_platform: "ios", user_signup_acquisition_channel: "organic", user_signup_ip_country: "US", user_signup_ip_country_name: "United States", user_signup_at: "2024-12-01 00:00:00", order_amount_local: 10, order_amount_usd: 10}
+          - {order_id: "11", user_id: "200", order_currency: "USD", order_card_country: "US", order_card_country_name: "United States", order_destination_country: "US", order_destination_country_name: "United States", order_payment_method: "credit_card", order_status: "failed", order_esim_package: "1GB - 7 Days", order_package_data_gigabytes: 1, order_package_validity_days: 7, order_is_unlimited_package: false, order_is_completed: false, order_is_refunded: false, order_is_failed: true, order_created_at: "2025-01-02 00:00:00", order_updated_at: "2025-01-02 00:00:00", user_signup_platform: "ios", user_signup_acquisition_channel: "organic", user_signup_ip_country: "US", user_signup_ip_country_name: "United States", user_signup_at: "2024-12-01 00:00:00", order_amount_local: 10, order_amount_usd: 10}
+          - {order_id: "12", user_id: "200", order_currency: "USD", order_card_country: "US", order_card_country_name: "United States", order_destination_country: "US", order_destination_country_name: "United States", order_payment_method: "credit_card", order_status: "completed", order_esim_package: "3GB - 30 Days", order_package_data_gigabytes: 3, order_package_validity_days: 30, order_is_unlimited_package: false, order_is_completed: true, order_is_refunded: false, order_is_failed: false, order_created_at: "2025-01-05 00:00:00", order_updated_at: "2025-01-05 00:00:00", user_signup_platform: "ios", user_signup_acquisition_channel: "organic", user_signup_ip_country: "US", user_signup_ip_country_name: "United States", user_signup_at: "2024-12-01 00:00:00", order_amount_local: 20, order_amount_usd: 20}
+          - {order_id: "13", user_id: "200", order_currency: "USD", order_card_country: "US", order_card_country_name: "United States", order_destination_country: "US", order_destination_country_name: "United States", order_payment_method: "credit_card", order_status: "refunded", order_esim_package: "5GB - 30 Days", order_package_data_gigabytes: 5, order_package_validity_days: 30, order_is_unlimited_package: false, order_is_completed: false, order_is_refunded: true, order_is_failed: false, order_created_at: "2025-01-10 00:00:00", order_updated_at: "2025-01-15 00:00:00", user_signup_platform: "ios", user_signup_acquisition_channel: "organic", user_signup_ip_country: "US", user_signup_ip_country_name: "United States", user_signup_at: "2024-12-01 00:00:00", order_amount_local: 30, order_amount_usd: 30}
+    expect:
+      rows:
+        - {order_id: "10", customer_attempt_number: 1, customer_purchase_number: 1, is_first_purchase: true, days_since_previous_purchase: null}
+        - {order_id: "11", customer_attempt_number: 2, customer_purchase_number: null, is_first_purchase: null, days_since_previous_purchase: null}
+        - {order_id: "12", customer_attempt_number: 3, customer_purchase_number: 2, is_first_purchase: false, days_since_previous_purchase: 4}
+        - {order_id: "13", customer_attempt_number: 4, customer_purchase_number: 3, is_first_purchase: false, days_since_previous_purchase: 5}

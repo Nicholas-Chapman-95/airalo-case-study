@@ -1,8 +1,20 @@
+-- depends_on: {{ ref('int_orders_enriched') }}
+
+-- partition on signup_at benefits BI read queries only, not the
+-- merge (which matches on user_id regardless of partition).
+-- daily granularity gives tighter pruning for date-filtered
+-- dashboards; ~10 years before hitting BQ's 4000 partition limit.
+
 {{
     config(
         materialized='incremental',
         unique_key='user_id',
         incremental_strategy='merge',
+        partition_by={
+            "field": "signup_at",
+            "data_type": "timestamp",
+            "granularity": "day"
+        },
         cluster_by=["user_id"],
         on_schema_change='append_new_columns'
     )
@@ -12,21 +24,18 @@ with
 
 {% if is_incremental() %}
 
--- customers with order changes in this batch
--- OR new signups not yet in the table
+-- customers who had order changes in this batch.
+-- NOTE: currently every user has at least one order, so order
+-- changes alone capture all affected customers.  If the source
+-- data ever includes users who sign up before placing an order,
+-- add a UNION DISTINCT on stg_raw__users (filtered by created_at
+-- in the var window) so new signups appear here immediately.
 customers_to_recompute as (
 
     select distinct user_id
-    from {{ ref('orders') }}
+    from {{ ref('int_orders_enriched') }}
     where order_updated_at >= timestamp('{{ var("data_interval_start") }}')
       and order_updated_at < timestamp('{{ var("data_interval_end") }}')
-
-    union distinct
-
-    select user_id
-    from {{ ref('stg_raw__users') }}
-    where created_at >= timestamp('{{ var("data_interval_start") }}')
-      and created_at < timestamp('{{ var("data_interval_end") }}')
 
 ),
 
@@ -36,41 +45,26 @@ customer_orders as (
 
     select
         user_id,
-
-        -- order counts
-        count(*) as total_orders,
-        countif(order_is_completed) as completed_orders,
-        countif(order_is_refunded) as refunded_orders,
-        countif(order_is_failed) as failed_orders,
-        countif(not order_is_failed) as total_purchases,
-
-        -- revenue
-        sum(case when order_is_completed then order_amount_usd else 0 end)
-            as total_revenue_usd,
-        sum(case when order_is_refunded then order_amount_usd else 0 end)
-            as total_refunded_usd,
-
-        -- lifecycle dates (all orders)
-        min(order_created_at) as first_order_at,
-        max(order_created_at) as last_order_at,
-
-        -- lifecycle dates (purchases only)
-        min(case when not order_is_failed then order_created_at end)
-            as first_purchase_at,
-        max(case when not order_is_failed then order_created_at end)
-            as last_purchase_at,
-
-        -- time to second purchase (for standardized repeat metrics)
-        min(case when customer_purchase_number = 2
-            then days_since_first_purchase end) as days_to_second_purchase
-
-    from {{ ref('orders') }}
+        total_orders,
+        completed_orders,
+        refunded_orders,
+        failed_orders,
+        total_purchases,
+        total_revenue_usd,
+        total_refunded_usd,
+        first_order_at,
+        last_order_at,
+        first_purchase_at,
+        last_purchase_at,
+        last_order_updated_at,
+        days_to_second_purchase
+    from {{ ref('int_orders_aggregated_to_customers') }}
 
     {% if is_incremental() %}
-    where user_id in (select user_id from customers_to_recompute)
+    where user_id in (
+        select user_id from customers_to_recompute
+    )
     {% endif %}
-
-    group by 1
 
 )
 
@@ -78,7 +72,10 @@ select
     -- customer grain
     u.user_id,
 
-    -- customer attributes
+    -- customer attributes: these are signup-time metadata from
+    -- stg_raw__users (one row per user, no change tracking in source).
+    -- in this customer-grain table the values are unambiguous, so
+    -- they don't carry the 'signup_' prefix used in the orders mart
     u.platform,
     u.acquisition_channel,
     u.ip_country,
@@ -108,14 +105,6 @@ select
         cast(co.first_order_at as date),
         day
     ) as customer_lifetime_days,
-
-    -- note: only refreshed when the customer is reprocessed —
-    -- use last_order_at in BI layer for always-fresh recency
-    date_diff(
-        current_date(),
-        cast(co.last_order_at as date),
-        day
-    ) as days_since_last_order,
 
     -- repeat flag
     coalesce(co.total_purchases, 0) > 1 as is_repeat_purchaser,

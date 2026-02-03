@@ -6,6 +6,7 @@
         unique_key='currency',
         strategy='check',
         check_cols=['usd_rate'],
+        tags=['daily_6am'],
     )
 }}
 

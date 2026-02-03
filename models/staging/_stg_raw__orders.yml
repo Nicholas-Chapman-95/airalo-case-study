@@ -18,15 +18,25 @@ models:
         tests:
           - not_null
       - name: user_id
-        description: Foreign key to stg_raw__users.
+        description: >
+          Foreign key to stg_raw__users. Null for one known
+          source record where Python None was serialized as
+          a string (converted to SQL null via nullif).
         tests:
-          - not_null
+          - not_null:
+              config:
+                severity: warn
+          - relationships:
+              to: ref('stg_raw__users')
+              field: user_id
+              config:
+                severity: warn
       - name: currency
         description: ISO 4217 currency code of the transaction (e.g. USD, EUR).
       - name: card_country
         description: >
           ISO 3166-1 alpha-2 country code of the payment card.
-          Null when payment method has no card (e.g. Airmoney).
+          Nullable.
       - name: destination_country
         description: ISO 3166-1 alpha-2 country code where the eSIM is used.
       - name: payment_method
@@ -36,6 +46,9 @@ models:
       - name: status
         description: >
           Order status: completed, refunded, or failed.
+        tests:
+          - accepted_values:
+              values: ['completed', 'refunded', 'failed']
       - name: esim_package
         description: >
           Original eSIM package label from source

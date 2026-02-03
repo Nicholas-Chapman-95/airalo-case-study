@@ -24,9 +24,11 @@ select
     ) }} as order_status_key,
 
     -- ids: cast to string for join safety and
-    -- surrogate key compatibility
+    -- surrogate key compatibility. nullif handles a
+    -- source bug where python None was serialized as
+    -- the literal string 'None' instead of SQL null
     cast(order_id as string) as order_id,
-    cast(user_id as string) as user_id,
+    nullif(cast(user_id as string), 'None') as user_id,
 
     -- strings: iso codes (4217 / 3166-1 alpha-2)
     -- upper + trim for consistency with ip_country

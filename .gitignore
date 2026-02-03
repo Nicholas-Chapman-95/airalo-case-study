@@ -19,3 +19,6 @@ logs/
 
 # Secrets
 .env
+
+# Local tooling
+.mcp.json

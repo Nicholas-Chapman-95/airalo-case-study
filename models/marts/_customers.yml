@@ -97,6 +97,9 @@ models:
         description: >
           Total number of orders placed by this customer,
           regardless of status.
+        tests:
+          - dbt_utils.expression_is_true:
+              expression: ">= 0"
         meta:
           dimension:
             label: "Total Orders"
@@ -213,6 +216,11 @@ models:
         description: >
           Number of days between this customer's first and last order.
           Null for customers with fewer than two orders.
+        tests:
+          - dbt_utils.expression_is_true:
+              expression: ">= 0"
+              config:
+                where: "customer_lifetime_days is not null"
         meta:
           dimension:
             label: "Lifetime (Days)"
@@ -225,28 +233,13 @@ models:
               format: "#,##0.0"
               group: "Averages"
 
-      - name: days_since_last_order
-        description: >
-          Number of days since this customer's most recent order,
-          as of the last model refresh. Null for customers with no orders.
-        meta:
-          dimension:
-            label: "Days Since Last Order"
-            group: "Lifecycle"
-          metrics:
-            avg_days_since_last_order:
-              type: average
-              label: "Avg Days Since Last Order"
-              description: >
-                Average number of days since customers last placed
-                an order.
-              format: "#,##0.0"
-              group: "Averages"
 
       - name: is_repeat_purchaser
         description: >
           Whether this customer has made more than one successful
           purchase.
+        tests:
+          - not_null
         meta:
           dimension:
             label: "Repeat Purchaser"
@@ -290,6 +283,8 @@ models:
         description: >
           Whether the customer made a second purchase within 90 days
           of their first.
+        tests:
+          - not_null
         meta:
           dimension:
             hidden: true
@@ -306,6 +301,8 @@ models:
         description: >
           Whether the customer made a second purchase within 365 days
           of their first.
+        tests:
+          - not_null
         meta:
           dimension:
             hidden: true

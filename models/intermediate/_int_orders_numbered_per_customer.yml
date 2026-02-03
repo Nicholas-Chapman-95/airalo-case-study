@@ -1,0 +1,76 @@
+version: 2
+
+models:
+  - name: int_orders_numbered_per_customer
+    description: >
+      Order-level customer sequencing -- one row per order_id.
+      Computes purchase sequencing (attempt number, purchase number),
+      inter-purchase timing, and running order history counters
+      using window functions over the full customer order history.
+      Materialized as incremental (merge on order_id) because the
+      window functions require the complete order history for each
+      affected customer and cannot be pushed down through a view.
+    columns:
+      - name: order_id
+        description: Unique order identifier.
+        tests:
+          - unique
+          - not_null
+      - name: user_id
+        description: Foreign key to stg_raw__users.
+        tests:
+          - not_null
+      - name: customer_attempt_number
+        description: >
+          Which order attempt this is for the customer, counting all
+          orders regardless of status (1st, 2nd, 3rd, etc.).
+        tests:
+          - dbt_utils.expression_is_true:
+              expression: ">= 1"
+      - name: is_first_attempt
+        description: Whether this is the customer's first ever order attempt.
+      - name: customer_purchase_number
+        description: >
+          Which successful purchase this is for the customer (1st, 2nd,
+          3rd, etc.). Only counts completed and refunded orders.
+          Null for failed orders.
+      - name: is_first_purchase
+        description: >
+          Whether this is the customer's first successful purchase.
+          Null for failed orders.
+      - name: previous_purchase_at
+        description: >
+          Timestamp of the customer's previous successful purchase.
+          Null for first purchases and failed orders.
+      - name: days_since_previous_purchase
+        description: >
+          Days between this purchase and the customer's previous
+          purchase. Null for first purchases and failed orders.
+      - name: customer_first_purchase_at
+        description: >
+          Timestamp of the customer's first successful purchase.
+          Null for failed orders.
+      - name: days_since_first_purchase
+        description: >
+          Days between this purchase and the customer's first
+          purchase. Null for failed orders.
+      - name: customer_prior_completions
+        description: >
+          Number of completed orders this customer had before this
+          order was placed. Zero for the customer's first order.
+      - name: customer_prior_refunds
+        description: >
+          Number of refunded orders this customer had before this
+          order was placed. Zero for the customer's first order.
+      - name: customer_prior_failures
+        description: >
+          Number of failed orders this customer had before this
+          order was placed. Zero for the customer's first order.
+      - name: order_status
+        description: Current order status (completed, refunded, or failed).
+      - name: order_created_at
+        description: Timestamp when the order was originally created.
+      - name: order_updated_at
+        description: Timestamp of the most recent status change.
+      - name: order_amount_usd
+        description: Order amount converted to US dollars.

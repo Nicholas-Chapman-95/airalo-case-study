@@ -16,6 +16,9 @@ sources:
 
     tables:
       - name: exchange_rates
+        description: >
+          Currency-to-USD exchange rates. One row per currency code
+          with the corresponding USD conversion rate.
         config:
           loaded_at_field: null
         columns:
@@ -44,6 +47,9 @@ sources:
           - name: status
 
       - name: users
+        description: >
+          Registered users. One row per user_id with signup metadata
+          including platform, acquisition channel, and IP-based country.
         columns:
           - name: user_id
             tests:

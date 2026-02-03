@@ -16,13 +16,17 @@ clean-targets:
 
 vars:
   # airflow-sourced: overridden at runtime via --vars
-  data_interval_start: "2024-01-01"
-  data_interval_end: "2024-01-01"
+  data_interval_start: "2026-01-01"
+  data_interval_end: "2026-01-01"
   processing_timestamp: "current_timestamp()"
 
 seeds:
   airalo:
     +schema: raw
+
+dispatch:
+  - macro_namespace: dbt
+    search_order: ['dbt_project_evaluator', 'dbt']
 
 models:
   airalo:
