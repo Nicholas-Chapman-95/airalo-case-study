@@ -138,7 +138,7 @@ uv run dbt docs generate && uv run dbt docs serve
 │       ├── customers.sql         # Incremental — customer-grain
 │       └── _customers.yml        # Column docs + Lightdash metrics
 └── reports/
-    └── customer_purchase_behavior.ipynb
+    └── customer_purchase_behavior.ipynb  # Example queries and analysis
 ```
 
 ## Scheduling
@@ -180,11 +180,20 @@ dbt build --vars '{data_interval_start: "{{ ds }}", data_interval_end: "{{ next_
 
 The `customers` mart uses these to identify which customers need recomputation, avoiding a full table scan on every run.
 
+## Example analysis
+
+[`reports/customer_purchase_behavior.ipynb`](reports/customer_purchase_behavior.ipynb) demonstrates how the marts can be queried to answer business questions using the columns and metrics defined in `_customers.yml` and `_orders.yml`:
+
+1. **Where to focus marketing spend** — new vs returning customer revenue split, repeat rates by acquisition channel
+2. **How often customers return** — purchase frequency distribution, repeat purchaser rate
+3. **How long until they come back** — time-to-second-purchase distribution, inter-purchase gap trends
+
 ## Testing
 
 Tests are defined in YAML configs alongside models. The project uses:
 
-- **Generic tests** — `unique`, `not_null`, `accepted_values`, `relationships` on key columns
+- **Generic tests** — `unique`, `not_null`, `relationships`, and `expression_is_true` on key columns and derived values
+- **Unit tests** — mock-data tests validating business logic (dedup, USD conversion, purchase sequencing, customer derived columns)
 - **Source freshness** — `warn_after: 36h`, `error_after: 72h` on raw tables
 - **dbt_project_evaluator** — validates project structure against dbt best practices
 

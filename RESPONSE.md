@@ -55,8 +55,6 @@ The incremental models use **merge** strategy rather than `insert_overwrite` or 
 
 - **Multi-row orders** — the biggest issue. `raw.orders` has multiple rows per `order_id` due to status changes over time. `int_orders_latest_status` deduplicates using `row_number() over (partition by order_id order by updated_at desc)` to keep only the most recent status per order. The `unique` test on `order_id` is only applied after deduplication — it would be wrong to test it at the staging level where duplicates are expected.
 - **Orphaned user ID (`"None"` string)** — one order has `user_id` set to the literal string `"None"` rather than SQL null — a source system bug where Python `None` was serialized as a string. Staging converts this to actual `NULL` via `nullif(cast(user_id as string), 'None')` — this is data cleaning (fixing a broken representation), not a business decision about whether to keep the order. The order is preserved in `int_orders_enriched` via a left join with null user dimensions. A `warn`-severity relationship test on the `orders` mart flags the source issue without blocking the pipeline. In production, this would be reported to the source team for a fix.
-- **Currency conversion** — orders are in local currencies. `int_orders_enriched` joins exchange rates and computes `order_amount_usd`, with `nullif(usd_rate, 0)` to guard against division by zero if a rate is missing or zero.
-- **Country code resolution** — raw data stores ISO alpha-2 codes (`US`, `GB`). `int_orders_enriched` joins a `seed_countries` CSV to add human-readable names for card country, destination country, and user IP country.
 
 ### Testing strategy
 
