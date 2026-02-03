@@ -1,0 +1,56 @@
+version: 2
+
+models:
+  - name: int_orders_latest_status
+    description: >
+      Deduplicated orders — one row per order_id, keeping the row
+      with the most recent updated_at timestamp. Resolves the
+      multi-row-per-order grain in stg_raw__orders to a single
+      current-status row per order.
+    columns:
+      - name: order_id
+        description: Unique order identifier.
+        tests:
+          - unique
+          - not_null
+      - name: user_id
+        description: Foreign key to stg_raw__users.
+        tests:
+          - not_null
+          - relationships:
+              to: ref('stg_raw__users')
+              field: user_id
+              config:
+                severity: warn
+      - name: currency
+        description: ISO 4217 currency code of the transaction.
+      - name: card_country
+        description: >
+          ISO 3166-1 alpha-2 country code of the payment card.
+          Null for non-card payment methods.
+      - name: destination_country
+        description: ISO 3166-1 alpha-2 country code where the eSIM is used.
+      - name: payment_method
+        description: Normalized payment method in snake_case.
+      - name: status
+        description: Current order status (completed, refunded, or failed).
+      - name: esim_package
+        description: Original eSIM package label from source.
+      - name: package_data_gigabytes
+        description: Data allowance in GB. Null for unlimited plans.
+      - name: package_validity_days
+        description: Plan validity in days. Null for unlimited plans.
+      - name: is_unlimited_package
+        description: True if the eSIM package is unlimited.
+      - name: is_completed
+        description: True if the current status is completed.
+      - name: is_refunded
+        description: True if the current status is refunded.
+      - name: is_failed
+        description: True if the current status is failed.
+      - name: amount
+        description: Transaction amount in local currency.
+      - name: created_at
+        description: Timestamp when the order was originally created.
+      - name: updated_at
+        description: Timestamp of the most recent status change.

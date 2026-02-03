@@ -1,0 +1,88 @@
+version: 2
+
+models:
+  - name: int_orders_enriched
+    description: >
+      Enriched orders — one row per order_id. Joins
+      int_orders_latest_status with stg_raw__users,
+      stg_raw__exchange_rates, and seed_countries to add user
+      attributes, country names, and USD-converted amounts.
+      Materialized as incremental (merge) because it has 3
+      downstream consumers and avoids redundant re-evaluation
+      of the join chain.
+    columns:
+      - name: order_id
+        description: Unique order identifier.
+        tests:
+          - unique
+          - not_null
+      - name: user_id
+        description: Foreign key to stg_raw__users.
+        tests:
+          - not_null
+          - relationships:
+              to: ref('stg_raw__users')
+              field: user_id
+              config:
+                severity: warn
+      - name: order_currency
+        description: ISO 4217 currency code of the transaction.
+      - name: order_card_country
+        description: >
+          ISO 3166-1 alpha-2 country code of the payment card.
+          Null for non-card payment methods.
+      - name: order_card_country_name
+        description: Country name of the payment card.
+      - name: order_destination_country
+        description: ISO 3166-1 alpha-2 country code where the eSIM is used.
+      - name: order_destination_country_name
+        description: Country name where the eSIM is used.
+      - name: order_payment_method
+        description: Normalized payment method in snake_case.
+      - name: order_status
+        description: >
+          Current order status: completed, refunded, or failed.
+      - name: order_esim_package
+        description: Original eSIM package label from source.
+      - name: order_package_data_gigabytes
+        description: Data allowance in GB. Null for unlimited plans.
+      - name: order_package_validity_days
+        description: Plan validity in days. Null for unlimited plans.
+      - name: order_is_unlimited_package
+        description: True if the eSIM package is unlimited.
+      - name: order_is_completed
+        description: True if the current status is completed.
+      - name: order_is_refunded
+        description: True if the current status is refunded.
+      - name: order_is_failed
+        description: True if the current status is failed.
+      - name: order_created_at
+        description: Timestamp when the order was originally created.
+      - name: order_updated_at
+        description: Timestamp of the most recent status change.
+      - name: user_signup_platform
+        description: >
+          Platform the user signed up on. This is signup-time
+          metadata — the source does not track platform changes.
+      - name: user_signup_acquisition_channel
+        description: >
+          Marketing channel that acquired the user at signup.
+          The source does not track channel changes.
+      - name: user_signup_ip_country
+        description: >
+          Country inferred from the user's IP at signup
+          (ISO 3166-1 alpha-2 code).
+      - name: user_signup_ip_country_name
+        description: >
+          Country name inferred from the user's IP at signup.
+      - name: user_signup_at
+        description: Timestamp when the user account was created.
+      - name: usd_rate
+        description: Exchange rate used for USD conversion.
+      - name: order_amount_local
+        description: Order amount in the original transaction currency.
+      - name: order_amount_usd
+        description: Order amount converted to US dollars.
+        tests:
+          - dbt_utils.expression_is_true:
+              expression: ">= 0"

@@ -1,0 +1,22 @@
+version: 2
+
+models:
+  - name: stg_raw__users
+    description: >
+      Cleaned users from raw.users. One row per user_id.
+    columns:
+      - name: user_id
+        description: Unique user identifier (cast to string).
+        tests:
+          - unique
+          - not_null
+      - name: created_at
+        description: Timestamp when the user account was created.
+      - name: platform
+        description: Platform the user signed up on.
+      - name: acquisition_channel
+        description: Marketing channel that acquired the user.
+      - name: ip_country
+        description: >
+          ISO 3166-1 alpha-2 country code inferred from the user's
+          IP at signup. Nullable.

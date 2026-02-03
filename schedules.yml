@@ -1,0 +1,38 @@
+# Airflow DAG schedule definitions.
+#
+# Each entry becomes an Airflow DAG that selects dbt models by tag.
+# The orchestrator passes --vars with data_interval_start/end so
+# incremental models process the correct time window.
+#
+# Models without a schedule tag run in the default daily DAG.
+# To assign a model to a specific schedule, add the tag in its config:
+#
+#   {{ config(materialized='incremental', tags=['daily_6am']) }}
+
+schedules:
+  # ── Primary DAG ────────────────────────────────────────────────
+  # Runs the full project daily at 8am UTC.
+  # Excludes models explicitly assigned to other schedules.
+  - name: daily
+    start_date: "2025-01-01"
+    schedule: "@daily"
+    exclude:
+      - "tag:daily_6am"
+      - "tag:adhoc"
+
+  # ── Early-morning DAG ─────────────────────────────────────────
+  # Exchange rate snapshot + staging refresh before the main DAG.
+  # Ensures currency conversion is current before orders are built.
+  - name: daily_6am
+    start_date: "2025-01-01"
+    schedule: "0 6 * * *"
+    select:
+      - "+tag:daily_6am"
+
+  # ── Ad-hoc / manual ───────────────────────────────────────────
+  # No schedule — triggered manually for backfills or debugging.
+  - name: adhoc
+    start_date: "2025-01-01"
+    schedule: null
+    select:
+      - "+tag:adhoc"
