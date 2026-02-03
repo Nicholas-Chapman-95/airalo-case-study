@@ -1,0 +1,10 @@
+[project]
+name = "airalo-dbt"
+version = "0.1.0"
+description = "Add your description here"
+requires-python = ">=3.13"
+dependencies = [
+    "dbt-bigquery>=1.11.0",
+    "sqlfluff>=4.0.0",
+    "sqlfluff-templater-dbt>=4.0.0",
+]

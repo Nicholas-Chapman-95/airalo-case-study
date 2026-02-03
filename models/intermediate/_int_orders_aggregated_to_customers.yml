@@ -1,0 +1,71 @@
+version: 2
+
+models:
+  - name: int_orders_aggregated_to_customers
+    description: >
+      Customer-level order aggregations. One row per user_id with order
+      counts, revenue totals, lifecycle dates, and repeat purchase timing.
+      Built from int_orders_enriched to avoid mart-to-mart dependencies.
+      Materialized as incremental (merge on user_id) because the GROUP BY
+      and window function block predicate pushdown — as a view, every
+      downstream read would full-scan and re-aggregate the entire
+      int_orders_enriched table. No partition because the table is
+      customer-grain (small relative to order-grain); clustered by
+      user_id for efficient merge and lookups.
+    columns:
+      - name: user_id
+        description: Unique customer identifier.
+        tests:
+          - unique
+          - not_null
+          - relationships:
+              to: ref('stg_raw__users')
+              field: user_id
+              config:
+                severity: warn
+      - name: total_orders
+        description: >
+          Total number of orders placed, regardless of status.
+      - name: completed_orders
+        description: Number of orders with completed status.
+      - name: refunded_orders
+        description: Number of orders with refunded status.
+      - name: failed_orders
+        description: Number of orders with failed status.
+      - name: total_purchases
+        description: >
+          Number of successful orders (completed or refunded).
+      - name: total_revenue_usd
+        description: >
+          Total revenue in USD from completed orders.
+        tests:
+          - dbt_utils.expression_is_true:
+              expression: ">= 0"
+      - name: total_refunded_usd
+        description: >
+          Total amount in USD from refunded orders.
+      - name: first_order_at
+        description: Timestamp of the customer's first order of any status.
+      - name: last_order_at
+        description: Timestamp of the customer's most recent order of any status.
+      - name: first_purchase_at
+        description: >
+          Timestamp of the customer's first successful purchase.
+          Null if the customer has no completed or refunded orders.
+      - name: last_purchase_at
+        description: >
+          Timestamp of the customer's most recent successful purchase.
+          Null if the customer has no completed or refunded orders.
+      - name: last_order_updated_at
+        description: >
+          Most recent order_updated_at across all of the customer's orders.
+          Used for incremental change detection downstream.
+      - name: days_to_second_purchase
+        description: >
+          Number of days between the customer's first and second successful
+          purchase. Null if the customer has fewer than two purchases.
+        tests:
+          - dbt_utils.expression_is_true:
+              expression: ">= 0"
+              config:
+                where: "days_to_second_purchase is not null"

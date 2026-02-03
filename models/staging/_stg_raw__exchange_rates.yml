@@ -1,0 +1,17 @@
+version: 2
+
+models:
+  - name: stg_raw__exchange_rates
+    description: >
+      Cleaned exchange rates from raw.exchange_rates.
+      One row per currency with its USD conversion rate.
+    columns:
+      - name: currency
+        description: ISO 4217 currency code.
+        tests:
+          - unique
+          - not_null
+      - name: usd_rate
+        description: >
+          Units of this currency per 1 USD. Divide an amount in
+          this currency by usd_rate to convert to USD.
